@@ -1,7 +1,7 @@
 {
   "currentIntent": {
     "slots": {
-      "serverType": "Workstation Instance"
+      "serverType": "Workstation"
     },
     "name": "StartInstances",
     "confirmationStatus": "None"
