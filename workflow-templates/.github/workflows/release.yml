@@ -1,0 +1,100 @@
+name: Release Lambda Package
+
+on:
+  release:
+    types: [created]
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  build-and-release:
+    name: Build and Release Lambda Package
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+
+    - name: Create Lambda deployment package
+      run: |
+        mkdir -p package
+        pip install boto3 -t package/
+        cp lambda.py package/
+        cd package
+        zip -r ../lambda.zip .
+        cd ..
+        ls -lh lambda.zip
+
+    - name: Generate checksum
+      run: |
+        sha256sum lambda.zip > lambda.zip.sha256
+        cat lambda.zip.sha256
+
+    - name: Upload Release Asset
+      uses: actions/upload-artifact@v4
+      with:
+        name: lambda-deployment-package
+        path: |
+          lambda.zip
+          lambda.zip.sha256
+        retention-days: 90
+
+    - name: Attach to Release
+      if: github.event_name == 'release'
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          lambda.zip
+          lambda.zip.sha256
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy-to-aws:
+    name: Deploy to AWS Lambda
+    runs-on: ubuntu-latest
+    needs: build-and-release
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    # Only run if AWS credentials are configured
+    environment: production
+
+    steps:
+    - name: Download Lambda package
+      uses: actions/download-artifact@v4
+      with:
+        name: lambda-deployment-package
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        aws-region: ${{ secrets.AWS_REGION }}
+        # Alternatively, use access keys (not recommended):
+        # aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        # aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+    - name: Deploy to Lambda
+      if: success()
+      run: |
+        # Update Lambda function code
+        # Uncomment and configure when ready to deploy:
+        # aws lambda update-function-code \
+        #   --function-name your-function-name \
+        #   --zip-file fileb://lambda.zip
+
+        echo "Deployment step - configure with your Lambda function name"
+        echo "Set AWS_ROLE_ARN and AWS_REGION in your repository secrets"
